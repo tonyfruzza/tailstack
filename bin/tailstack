@@ -125,35 +125,31 @@ def isThisTheEnd? event
   events_good = %w[ CREATE_COMPLETE UPDATE_COMPLETE DELETE_COMPLETE ]
   events_bad  = %w[ CREATE_FAILED UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE ]
 
-  unless event[:resource_type] == 'AWS::CloudFormation::Stack'
-    return false
-  end
-
-  if events_bad.include? event[:resource_status]
-    exit 1
-  end
-
+  return false unless event[:resource_type] == 'AWS::CloudFormation::Stack'
+  exit 1 if events_bad.include? event[:resource_status]
   return events_good.include? event[:resource_status]
 end
 
 if options.key?(:list)
-  stack_details = cfn.describe_stacks.to_h[:stacks]
-  cfn.list_stacks.to_h[:stack_summaries].uniq{|s| s[:stack_name]}.collect do |s|
-    if s[:stack_status] != 'DELETE_COMPLETE'
-      puts "#{s[:stack_name].bold} - #{s[:template_description].cyan}"
-      outputs = stack_details.find{|stack| stack[:stack_name] == s[:stack_name]}[:outputs]
-      parms   = stack_details.find{|stack| stack[:stack_name] == s[:stack_name]}[:parameters]
-      if options.key?(:parms) && parms
-        puts " #{"Parameters:".green}"
-        parms.each do |parm|
-          puts "  #{parm[:parameter_key].blue}: #{parm[:parameter_value].gray}"
-        end
+  # Build up map that contains the stack id -> status
+  status_map = {}
+  cfn.list_stacks.to_h[:stack_summaries].each do |s|
+    status_map[s[:stack_id]] = s[:stack_status]
+  end
+
+  cfn.describe_stacks.to_h[:stacks].each do |s|
+    next if status_map[s[:stack_id]] == 'DELETE_COMPLETE'
+    puts "#{s[:stack_name].bold} - #{s[:description].cyan}"
+    if options.key?(:parms) && parms
+      puts " #{"Parameters:".green}"
+      s[:parameters].each do |parm|
+        puts "  #{parm[:parameter_key].blue}: #{parm[:parameter_value].gray}"
       end
-      if options.key?(:outputs) && outputs
-        puts " #{"Outputs:".magenta}"
-        outputs.each do |output|
-          puts "  #{output[:output_key].brown}: #{output[:output_value].gray}"
-        end
+    end
+    if options.key?(:outputs) && outputs
+      puts " #{"Outputs:".magenta}"
+      s[:ouputs].each do |output|
+        puts "  #{output[:output_key].brown}: #{output[:output_value].gray}"
       end
     end
   end
@@ -164,7 +160,7 @@ end
 events_seen = []
 loop do
   # Does the stack exist?
-  unless cfn.list_stacks.to_h[:stack_summaries].map{|s| s[:stack_name]}.include? options[:stack]
+  unless cfn.describe_stacks.to_h[:stacks].map{|s| s[:stack_name]}.include? options[:stack]
     puts "Stack '#{options[:stack]}' not found."
     exit 1
   end

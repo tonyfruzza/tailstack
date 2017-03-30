@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'tailstack'
-  s.version     = '0.0.4'
+  s.version     = '0.0.5'
   s.executables << 'tailstack'
   s.summary     = "Tails the event output of AWS CloudFormation stacks"
   s.description = "aws sdk based tool for watching CloudFormation stacks being created, updated, or deleted."
