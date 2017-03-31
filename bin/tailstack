@@ -130,7 +130,7 @@ def isThisTheEnd? event
   return events_good.include? event[:resource_status]
 end
 
-if options.key?(:list)
+def print_list(cfn, options)
   # Build up map that contains the stack id -> status
   status_map = {}
   cfn.list_stacks.to_h[:stack_summaries].each do |s|
@@ -138,15 +138,16 @@ if options.key?(:list)
   end
 
   cfn.describe_stacks.to_h[:stacks].each do |s|
+    next if options.key?(:stack) && options[:stack] != s[:stack_name]
     next if status_map[s[:stack_id]] == 'DELETE_COMPLETE'
     puts "#{s[:stack_name].bold} - #{s[:description].cyan}"
-    if options.key?(:parms) && parms
+    if options.key?(:parms) && s[:parameters]
       puts " #{"Parameters:".green}"
       s[:parameters].each do |parm|
         puts "  #{parm[:parameter_key].blue}: #{parm[:parameter_value].gray}"
       end
     end
-    if options.key?(:outputs) && outputs
+    if options.key?(:outputs) && s[:outputs]
       puts " #{"Outputs:".magenta}"
       s[:ouputs].each do |output|
         puts "  #{output[:output_key].brown}: #{output[:output_value].gray}"
@@ -157,6 +158,10 @@ if options.key?(:list)
   exit 0
 end
 
+print_list(cfn, options) if options.key?(:list)
+
+# Turn on outputs for finish summary
+options[:outputs] = true
 events_seen = []
 loop do
   # Does the stack exist?
@@ -173,6 +178,6 @@ loop do
       events_seen << event[:event_id]
     end
   end
-  break if isThisTheEnd? stack_out.to_h[:stack_events].first
+  print_list(cfn, options) if isThisTheEnd? stack_out.to_h[:stack_events].first
   sleep 2
 end
