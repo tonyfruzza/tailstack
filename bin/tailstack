@@ -149,7 +149,7 @@ def print_list(cfn, options)
     end
     if options.key?(:outputs) && s[:outputs]
       puts " #{"Outputs:".magenta}"
-      s[:ouputs].each do |output|
+      s[:outputs].each do |output|
         puts "  #{output[:output_key].brown}: #{output[:output_value].gray}"
       end
     end
