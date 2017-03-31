@@ -5,3 +5,5 @@ install:
 	gem install ./tailstack-${GEM_VERSION}.gem
 push:
 	gem push tailstack-${GEM_VERSION}.gem
+clean:
+	rm -f *.gem
