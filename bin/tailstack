@@ -149,7 +149,7 @@ def print_list(cfn, options)
         puts "  #{parm[:parameter_key].blue}: #{parm[:parameter_value].gray}"
       end
     end
-    if options.key?(:outputs) && s[:outputs]
+    if (options.key?(:outputs) || options.key?(:get_out)) && s[:outputs]
       puts " #{"Outputs:".magenta}" unless options.key? :get_out
       s[:outputs].each do |output|
         if options.key?(:get_out) && output[:output_key] == options[:get_out]
@@ -164,7 +164,7 @@ def print_list(cfn, options)
   exit 0
 end
 
-print_list(cfn, options) if options.key?(:list)
+print_list(cfn, options) if (options.key?(:list) || options.key?(:get_out))
 
 # Turn on outputs for finish summary
 options[:outputs] = true
