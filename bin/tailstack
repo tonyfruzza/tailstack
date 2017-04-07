@@ -13,6 +13,8 @@ OptionParser.new do |opts|
   opts.on('-l', '--list', 'Lists stacks in environtment and exits'){ |o| options[:list] = o }
   opts.on('-o', '--outputs', 'Combine with --list also list outputs'){ |o| options[:outputs] = o }
   opts.on('-d', '--parms', 'Combine with --list also list parameters'){ |o| options[:parms] = o }
+  opts.on('-g', '--get_output OUTPUT', 'Prints out the parameter and exits'){ |o| options[:get_out] = o }
+  opts.on('-v', '--verbose', 'Up the verbosity'){ |o| options[:verbose] = o }
 end.parse!
 
 using_env_creds = true
@@ -27,7 +29,7 @@ if !options.key?(:region)
     File.read(File.expand_path('~/.aws/config')).each_line do |line|
       if found_profile
         options[:region] = line.split('=').last.strip
-        puts "Using region #{options[:region]}"
+        puts "Using region #{options[:region]}" if options.key? :verbose
         break;
       end
       if line.match("#{options[:profile]}\\]")
@@ -140,7 +142,7 @@ def print_list(cfn, options)
   cfn.describe_stacks.to_h[:stacks].each do |s|
     next if options.key?(:stack) && options[:stack] != s[:stack_name]
     next if status_map[s[:stack_id]] == 'DELETE_COMPLETE'
-    puts "#{s[:stack_name].bold} - #{s[:description].cyan}"
+    puts "#{s[:stack_name].bold} - #{s[:description].cyan}" unless options.key? :get_out
     if options.key?(:parms) && s[:parameters]
       puts " #{"Parameters:".green}"
       s[:parameters].each do |parm|
@@ -148,9 +150,13 @@ def print_list(cfn, options)
       end
     end
     if options.key?(:outputs) && s[:outputs]
-      puts " #{"Outputs:".magenta}"
+      puts " #{"Outputs:".magenta}" unless options.key? :get_out
       s[:outputs].each do |output|
-        puts "  #{output[:output_key].brown}: #{output[:output_value].gray}"
+        if options.key?(:get_out) && output[:output_key] == options[:get_out]
+          puts output[:output_value]
+          exit 0
+        end
+        puts "  #{output[:output_key].brown}: #{output[:output_value].gray}" unless options.key? :get_out
       end
     end
   end
