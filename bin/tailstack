@@ -4,6 +4,8 @@ require 'aws-sdk'
 require 'json'
 require 'optparse'
 
+VERSION='0.0.15'
+
 options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: tailstack [options]"
@@ -14,13 +16,20 @@ OptionParser.new do |opts|
   opts.on('-o', '--outputs', 'Combine with --list also list outputs'){ |o| options[:outputs] = o }
   opts.on('-d', '--parms', 'Combine with --list also list parameters'){ |o| options[:parms] = o }
   opts.on('-g', '--get_output OUTPUT', 'Prints out the parameter and exits'){ |o| options[:get_out] = o }
-  opts.on('-v', '--verbose', 'Up the verbosity'){ |o| options[:verbose] = o }
+  opts.on('-v', '--version', 'Print the version and exit'){ |o| options[:version] = o }
+  opts.on('-h', '--history', 'show previous event history for this stack, otherwise only new events will be shown'){ |o| options[:history] = o }
 end.parse!
+
+if options[:version]
+  puts VERSION
+  exit
+end
 
 using_env_creds = true
 aws_access_key_id = nil
 aws_secret_access_key = nil
 options[:profile] ||= 'default'
+start_time = Time.now
 
 if !options.key?(:region)
   found_profile = false
@@ -29,7 +38,6 @@ if !options.key?(:region)
     File.read(File.expand_path('~/.aws/config')).each_line do |line|
       if found_profile
         options[:region] = line.split('=').last.strip
-        puts "Using region #{options[:region]}" if options.key? :verbose
         break;
       end
       if line.match("#{options[:profile]}\\]")
@@ -125,7 +133,7 @@ cfn = Aws::CloudFormation::Client.new()
 
 def isThisTheEnd? event
   events_good = %w[ CREATE_COMPLETE UPDATE_COMPLETE DELETE_COMPLETE ]
-  events_bad  = %w[ CREATE_FAILED UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE ]
+  events_bad  = %w[ CREATE_FAILED UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE UPDATE_ROLLBACK_FAILED ]
 
   return false unless event[:resource_type] == 'AWS::CloudFormation::Stack'
   exit 1 if events_bad.include? event[:resource_status]
@@ -139,7 +147,15 @@ def print_list(cfn, options)
     status_map[s[:stack_id]] = s[:stack_status]
   end
 
-  cfn.describe_stacks.to_h[:stacks].each do |s|
+  stacks = []
+  next_token = nil
+  loop do
+    resp = cfn.describe_stacks({next_token: next_token}).to_h
+    stacks += resp[:stacks]
+    break unless resp[:next_token]
+    next_token = resp[:next_token]
+  end
+  stacks.each do |s|
     next if options.key?(:stack) && options[:stack] != s[:stack_name]
     next if status_map[s[:stack_id]] == 'DELETE_COMPLETE'
     puts "#{s[:stack_name].bold} - #{s[:description].cyan}" unless options.key? :get_out
@@ -169,18 +185,39 @@ print_list(cfn, options) if (options.key?(:list) || options.key?(:get_out))
 # Turn on outputs for finish summary
 options[:outputs] = true
 events_seen = []
+# Get list of stacks
+next_token = nil
+stacks = []
+localtime = Time.now.zone
+loop do
+  begin
+    resp = cfn.describe_stacks({next_token: next_token}).to_h
+  rescue => error
+    puts error
+    exit 1
+  end
+  stacks += resp[:stacks].map{|s| s[:stack_name]}
+  break unless resp[:next_token]
+  next_token = resp[:next_token]
+end
+
 loop do
   # Does the stack exist?
-  unless cfn.describe_stacks.to_h[:stacks].map{|s| s[:stack_name]}.include? options[:stack]
+  unless stacks.include? options[:stack]
     puts "Stack '#{options[:stack]}' not found."
     exit 1
   end
   # Get the events from the stack
-  stack_out = cfn.describe_stack_events({ stack_name: options[:stack] })
+  begin
+    stack_out = cfn.describe_stack_events({ stack_name: options[:stack] })
+  rescue => error
+    p error
+    exit
+  end
+
   stack_out.to_h[:stack_events].reverse.each do |event|
     unless events_seen.include? event[:event_id]
-      puts "#{event[:timestamp]} #{event[:resource_type]} #{event_color(event[:resource_status])} #{event[:resource_status_reason]}"
-      #puts "#{event[:resource_properties]}"
+      puts "#{event[:timestamp].localtime} #{event[:resource_type]} #{event_color(event[:resource_status])} #{event[:resource_status_reason]}" if event[:timestamp] > start_time || options[:history]
       events_seen << event[:event_id]
     end
   end
